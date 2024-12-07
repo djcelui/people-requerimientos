@@ -1,0 +1,341 @@
+app/lib/db.ts
+        import sqlite3 from 'sqlite3'
+        import { open } from 'sqlite'
+
+        // Asegúrate de que este path sea accesible y tenga permisos de escritura
+        const dbPath = './users.db'
+
+        export async function openDb() {
+        return open({
+            filename: dbPath,
+            driver: sqlite3.Database
+        })
+        }
+
+        export async function initDb() {
+        const db = await openDb()
+        await db.exec(`
+            CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            email TEXT UNIQUE,
+            password TEXT,
+            permissions TEXT,
+            actions TEXT
+            )
+        `)
+        await db.close()
+        }
+
+
+app/components/user-management.tsx
+        'use client'
+
+        import React, { useState, useEffect } from 'react'
+        import { Button } from "@/app/components/ui/button"
+        import { Input } from "@/app/components/ui/input"
+        import { Label } from "@/app/components/ui/label"
+        import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/app/components/ui/table"
+        import { Checkbox } from "@/app/components/ui/checkbox"
+        import { PlusCircle, Trash2, Edit2 } from 'lucide-react'
+
+        const initialPermissions = {
+        requerimiento: false,
+        training: false,
+        manager: false,
+        operaciones: false,
+        status: false,
+        usuarios: false,
+        }
+
+        const initialActions = {
+        administrador: false,
+        confirmar: false,
+        cancelar: false,
+        modificar: false,
+        }
+
+        export default function UserManagement() {
+        const [users, setUsers] = useState([])
+        const [newUser, setNewUser] = useState({ 
+            name: '', 
+            email: '', 
+            password: '',
+            permissions: { ...initialPermissions },
+            actions: { ...initialActions }
+        })
+        const [editingIndex, setEditingIndex] = useState(null)
+
+        useEffect(() => {
+            fetchUsers()
+        }, [])
+
+        const fetchUsers = async () => {
+            const response = await fetch('/api/users')
+            const data = await response.json()
+            setUsers(data)
+        }
+
+        const handleInputChange = (e) => {
+            const { name, value } = e.target
+            setNewUser({ ...newUser, [name]: value })
+        }
+
+        const handlePermissionChange = (permission) => {
+            setNewUser({
+            ...newUser,
+            permissions: {
+                ...newUser.permissions,
+                [permission]: !newUser.permissions[permission],
+            },
+            })
+        }
+
+        const handleActionChange = (action) => {
+            setNewUser({
+            ...newUser,
+            actions: {
+                ...newUser.actions,
+                [action]: !newUser.actions[action],
+            },
+            })
+        }
+
+        const handleSubmit = async (e) => {
+            e.preventDefault()
+            if (editingIndex !== null) {
+            await fetch(`/api/users/${users[editingIndex].id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newUser)
+            })
+            } else {
+            await fetch('/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newUser)
+            })
+            }
+            fetchUsers()
+            setNewUser({ name: '', email: '', password: '', permissions: { ...initialPermissions }, actions: { ...initialActions } })
+            setEditingIndex(null)
+        }
+
+        const handleEdit = (index) => {
+            setNewUser(users[index])
+            setEditingIndex(index)
+        }
+
+        const handleDelete = async (id) => {
+            await fetch(`/api/users/${id}`, { method: 'DELETE' })
+            fetchUsers()
+        }
+
+        return (
+            <div className="space-y-6">
+            <h2 className="text-2xl font-bold">Gestión de Usuarios</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                <Label htmlFor="name">Nombre</Label>
+                <Input id="name" name="name" value={newUser.name} onChange={handleInputChange} required />
+                </div>
+                <div>
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" value={newUser.email} onChange={handleInputChange} required />
+                </div>
+                <div>
+                <Label htmlFor="password">Contraseña</Label>
+                <Input id="password" name="password" type="password" value={newUser.password} onChange={handleInputChange} required />
+                </div>
+                <div>
+                <Label>Permisos de Acceso</Label>
+                <div className="grid grid-cols-2 gap-2">
+                    {Object.keys(initialPermissions).map((permission) => (
+                    <div key={permission} className="flex items-center space-x-2">
+                        <Checkbox
+                        id={`permission-${permission}`}
+                        checked={newUser.permissions[permission]}
+                        onCheckedChange={() => handlePermissionChange(permission)}
+                        />
+                        <Label htmlFor={`permission-${permission}`}>{permission.charAt(0).toUpperCase() + permission.slice(1)}</Label>
+                    </div>
+                    ))}
+                </div>
+                </div>
+                <div>
+                <Label>Permisos de Acción</Label>
+                <div className="grid grid-cols-2 gap-2">
+                    {Object.keys(initialActions).map((action) => (
+                    <div key={action} className="flex items-center space-x-2">
+                        <Checkbox
+                        id={`action-${action}`}
+                        checked={newUser.actions[action]}
+                        onCheckedChange={() => handleActionChange(action)}
+                        />
+                        <Label htmlFor={`action-${action}`}>{action.charAt(0).toUpperCase() + action.slice(1)}</Label>
+                    </div>
+                    ))}
+                </div>
+                </div>
+                <Button type="submit" className="flex items-center">
+                <PlusCircle className="mr-2 h-4 w-4" />
+                {editingIndex !== null ? 'Actualizar Usuario' : 'Agregar Usuario'}
+                </Button>
+            </form>
+
+            {users.length > 0 && (
+                <Table>
+                <TableHeader>
+                    <TableRow>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Permisos de Acceso</TableHead>
+                    <TableHead>Permisos de Acción</TableHead>
+                    <TableHead>Acciones</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {users.map((user, index) => (
+                    <TableRow key={user.id}>
+                        <TableCell>{user.name}</TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell>
+                        {Object.entries(JSON.parse(user.permissions))
+                            .filter(([, value]) => value)
+                            .map(([key]) => key)
+                            .join(', ')}
+                        </TableCell>
+                        <TableCell>
+                        {Object.entries(JSON.parse(user.actions))
+                            .filter(([, value]) => value)
+                            .map(([key]) => key)
+                            .join(', ')}
+                        </TableCell>
+                        <TableCell>
+                        <Button variant="outline" size="sm" onClick={() => handleEdit(index)} className="mr-2">
+                            <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleDelete(user.id)}>
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                        </TableCell>
+                    </TableRow>
+                    ))}
+                </TableBody>
+                </Table>
+            )}
+            </div>
+        )
+        }
+
+
+
+app/api/users/route.ts
+        import { NextResponse } from 'next/server'
+        import { openDb } from '@/app/lib/db'
+        import bcrypt from 'bcrypt'
+
+        export async function GET() {
+        const db = await openDb()
+        const users = await db.all('SELECT * FROM users')
+        await db.close()
+        return NextResponse.json(users)
+        }
+
+        export async function POST(request: Request) {
+        const body = await request.json()
+        const { name, email, password, permissions, actions } = body
+
+        const hashedPassword = await bcrypt.hash(password, 10)
+
+        const db = await openDb()
+        await db.run(
+            'INSERT INTO users (name, email, password, permissions, actions) VALUES (?, ?, ?, ?, ?)',
+            [name, email, hashedPassword, JSON.stringify(permissions), JSON.stringify(actions)]
+        )
+        await db.close()
+
+        return NextResponse.json({ message: 'User created successfully' }, { status: 201 })
+        }
+
+
+
+app/api/users/[id]/route.ts
+        import { NextResponse } from 'next/server'
+        import { openDb } from '@/app/lib/db'
+        import bcrypt from 'bcrypt'
+
+        export async function PUT(request: Request, { params }: { params: { id: string } }) {
+        const body = await request.json()
+        const { name, email, password, permissions, actions } = body
+
+        const db = await openDb()
+
+        if (password) {
+            const hashedPassword = await bcrypt.hash(password, 10)
+            await db.run(
+            'UPDATE users SET name = ?, email = ?, password = ?, permissions = ?, actions = ? WHERE id = ?',
+            [name, email, hashedPassword, JSON.stringify(permissions), JSON.stringify(actions), params.id]
+            )
+        } else {
+            await db.run(
+            'UPDATE users SET name = ?, email = ?, permissions = ?, actions = ? WHERE id = ?',
+            [name, email, JSON.stringify(permissions), JSON.stringify(actions), params.id]
+            )
+        }
+
+        await db.close()
+
+        return NextResponse.json({ message: 'User updated successfully' })
+        }
+
+        export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+        const db = await openDb()
+        await db.run('DELETE FROM users WHERE id = ?', params.id)
+        await db.close()
+
+        return NextResponse.json({ message: 'User deleted successfully' })
+        }
+
+
+
+app/layout.tsx
+        import { Inter } from "next/font/google"
+        import { cn } from "@/app/lib/utils"
+        import { theme } from './styles/theme'
+        import { initDb } from './lib/db'
+
+        export const metadata = {
+        title: 'Your App Title',
+        description: 'Your app description',
+        }
+
+        const inter = Inter({
+        subsets: ["latin"],
+        variable: "--font-sans",
+        })
+
+        initDb()  // Inicializa la base de datos
+
+        export default function RootLayout({ children }: RootLayoutProps) {
+        return (
+            <div
+            className={cn(
+                "min-h-screen bg-background font-sans antialiased",
+                inter.variable
+            )}
+            style={{
+                '--primary': theme.colors.primary,
+                '--secondary': theme.colors.secondary,
+                '--accent': theme.colors.accent,
+                '--background': theme.colors.background,
+                '--text': theme.colors.text,
+                '--font-body': theme.fonts.body,
+                '--font-heading': theme.fonts.heading,
+            } as React.CSSProperties}
+            >
+            {children}
+            </div>
+        )
+        }
+
